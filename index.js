@@ -27,7 +27,9 @@ app.post("/webhook", async (req, res) => {
     const from = message.from;
 
     const trigger = process.env.TRIGGER_PHRASE || "BEA_TRIGGER_PHRASE";
-    if (!text.includes(trigger)) return res.sendStatus(200);
+    const normalizedText = text.trim().toLowerCase();
+    const normalizedTrigger = String(trigger).trim().toLowerCase();
+    if (normalizedText !== normalizedTrigger) return res.sendStatus(200);
 
     const token = process.env.WHATSAPP_TOKEN;
     const phoneNumberId = process.env.PHONE_NUMBER_ID;
