@@ -4,9 +4,9 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-const VERIFY_TOKEN = "bea_verify_token";
+// Use env vars (Render) — fallback only for local testing
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "bea_verify_token";
 
-// Webhook verification (Meta requirement)
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -15,40 +15,51 @@ app.get("/webhook", (req, res) => {
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
     return res.status(200).send(challenge);
   }
-  res.sendStatus(403);
+  return res.sendStatus(403);
 });
 
-// Incoming messages
 app.post("/webhook", async (req, res) => {
-  const message =
-    req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  try {
+    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    if (!message) return res.sendStatus(200);
 
-  if (!message) return res.sendStatus(200);
+    const text = message.text?.body || "";
+    const from = message.from;
 
-  const text = message.text?.body || "";
-  const from = message.from;
+    const trigger = process.env.TRIGGER_PHRASE || "BEA_TRIGGER_PHRASE";
+    if (!text.includes(trigger)) return res.sendStatus(200);
 
-  // 🔥 Replace with your exact trigger phrase
-  if (text.includes("BEA_TRIGGER_PHRASE")) {
+    const token = process.env.WHATSAPP_TOKEN;
+    const phoneNumberId = process.env.PHONE_NUMBER_ID;
+    const replyText =
+      process.env.REPLY_TEXT ||
+      "Here is the course breakdown link:\nhttps://yourlink.com";
+
+    if (!token || !phoneNumberId) {
+      console.error("Missing WHATSAPP_TOKEN or PHONE_NUMBER_ID in env vars");
+      return res.sendStatus(200);
+    }
+
     await axios.post(
-      `https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         messaging_product: "whatsapp",
         to: from,
-        text: {
-          body: "Here is the course breakdown link:\nhttps://yourlink.com"
-        }
+        text: { body: replyText },
       },
       {
         headers: {
-          Authorization: `Bearer YOUR_ACCESS_TOKEN`,
-          "Content-Type": "application/json"
-        }
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       }
     );
-  }
 
-  res.sendStatus(200);
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error(err?.response?.data || err.message);
+    return res.sendStatus(200);
+  }
 });
 
 app.listen(process.env.PORT || 3000, () => {
